@@ -2,7 +2,7 @@ system_hostname: "jellyfin-ap"
 system_domain: "local"
 
 ap_ssid: "Jellyfin"
-ap_password: "A1rpl@ne"
+ap_password: "P@ssw0rd!"
 ap_channel: 6
 
 ap_subnet: "10.192.254"
