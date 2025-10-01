@@ -1,6 +1,5 @@
 all:
   hosts:
-    nanopi:
-      ansible_host: YOUR_NANOPI_IP
-      ansible_user: ansible
+    localhost:
+      ansible_connection: local
       ansible_become: yes
