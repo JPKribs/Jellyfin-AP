@@ -1,13 +1,26 @@
 ---
-- name: Set hostname
-  hostname:
-    name: "{{ system_hostname }}"
+- name: Force set hostname with hostnamectl
+  command: hostnamectl set-hostname {{ system_hostname }}
+
+- name: Write hostname to /etc/hostname
+  copy:
+    content: "{{ system_hostname }}\n"
+    dest: /etc/hostname
+    mode: '0644'
 
 - name: Update /etc/hosts with hostname
   template:
     src: hosts.j2
     dest: /etc/hosts
     mode: '0644'
+
+- name: Ensure hostname persists in cloud-init if present
+  lineinfile:
+    path: /etc/cloud/cloud.cfg
+    regexp: '^preserve_hostname:'
+    line: 'preserve_hostname: true'
+    create: yes
+  failed_when: false
 
 - name: Backup original sources.list
   copy:
@@ -41,6 +54,45 @@
   apt:
     update_cache: yes
   when: apt_sources_changed.changed
+
+- name: Install unattended-upgrades for auto-updates
+  apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+
+- name: Configure unattended-upgrades
+  copy:
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Download-Upgradeable-Packages "1";
+      APT::Periodic::AutocleanInterval "7";
+      APT::Periodic::Unattended-Upgrade "1";
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+
+- name: Configure unattended-upgrades origins
+  copy:
+    content: |
+      Unattended-Upgrade::Origins-Pattern {
+              "origin=Debian,codename=${distro_codename},label=Debian";
+              "origin=Debian,codename=${distro_codename},label=Debian-Security";
+              "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+      };
+      Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+      Unattended-Upgrade::MinimalSteps "true";
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: '0644'
+
+- name: Enable and start unattended-upgrades
+  systemd:
+    name: unattended-upgrades
+    enabled: yes
+    state: started
 
 - name: Install avahi for mDNS/network discovery
   apt:
@@ -274,6 +326,29 @@
     dest: /etc/systemd/system/vpn-router-fw.service
     mode: '0644'
   notify: reload systemd
+
+- name: Create hostname persistence service
+  copy:
+    content: |
+      [Unit]
+      Description=Ensure hostname persists
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/hostnamectl set-hostname {{ system_hostname }}
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/hostname-persist.service
+    mode: '0644'
+
+- name: Enable hostname persistence service
+  systemd:
+    name: hostname-persist
+    enabled: yes
+    daemon_reload: yes
 
 - name: Enable and start WireGuard
   systemd:
