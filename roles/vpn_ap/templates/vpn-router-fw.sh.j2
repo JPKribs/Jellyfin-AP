@@ -1,0 +1,23 @@
+#!/bin/bash
+
+iptables -F
+iptables -t nat -F
+iptables -t mangle -F
+
+iptables -P FORWARD DROP
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+
+iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
+iptables -A FORWARD -s {{ ap_subnet }}.0/24 -d {{ service_ip }}/32 -o wg0 -j ACCEPT
+
+iptables -t nat -A POSTROUTING -o {{ ethernet_interface }} -j MASQUERADE
+iptables -A FORWARD -s {{ ap_subnet }}.0/24 ! -d {{ service_ip }}/32 -o {{ ethernet_interface }} -j ACCEPT
+
+iptables -A INPUT -i {{ wireless_interface }} -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -i {{ wireless_interface }} -p tcp --dport 53 -j ACCEPT
+iptables -A INPUT -i {{ wireless_interface }} -p udp --dport 67 -j ACCEPT
+
+netfilter-persistent save

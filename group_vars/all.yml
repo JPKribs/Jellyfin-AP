@@ -1,0 +1,16 @@
+system_hostname: "jellyfin-ap"
+system_domain: "local"
+
+ap_ssid: "Jellyfin"
+ap_password: "A1rpl@ne"
+ap_channel: 6
+
+ap_subnet: "10.192.254"
+ap_ip: "10.192.254.1"
+ap_netmask: "255.255.255.0"
+ap_dhcp_start: "10.192.254.10"
+ap_dhcp_end: "10.192.254.100"
+
+service_ip: "10.192.1.254"
+
+wireguard_config_file: "~/my-vpn-config.conf"

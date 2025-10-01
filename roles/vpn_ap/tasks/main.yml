@@ -1,0 +1,306 @@
+---
+- name: Set hostname
+  hostname:
+    name: "{{ system_hostname }}"
+
+- name: Update /etc/hosts with hostname
+  template:
+    src: hosts.j2
+    dest: /etc/hosts
+    mode: '0644'
+
+- name: Backup original sources.list
+  copy:
+    src: /etc/apt/sources.list
+    dest: /etc/apt/sources.list.backup
+    remote_src: yes
+    force: no
+
+- name: Replace with standard Debian repositories
+  copy:
+    content: |
+      deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+      deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+      deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
+      deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+    dest: /etc/apt/sources.list
+    mode: '0644'
+  register: apt_sources_changed
+
+- name: Remove FriendlyARM specific repositories
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/friendlyelec.list
+    - /etc/apt/sources.list.d/armbian.list
+    - /etc/apt/sources.list.d/local-packages.list
+  failed_when: false
+
+- name: Update apt cache after repository change
+  apt:
+    update_cache: yes
+  when: apt_sources_changed.changed
+
+- name: Install avahi for mDNS/network discovery
+  apt:
+    name:
+      - avahi-daemon
+      - avahi-utils
+      - libnss-mdns
+    state: present
+
+- name: Configure avahi hostname
+  template:
+    src: avahi-daemon.conf.j2
+    dest: /etc/avahi/avahi-daemon.conf
+    mode: '0644'
+  notify: restart avahi
+
+- name: Enable and start avahi
+  systemd:
+    name: avahi-daemon
+    enabled: yes
+    state: started
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install required packages
+  apt:
+    name:
+      - hostapd
+      - dnsmasq
+      - wireguard
+      - wireguard-tools
+      - iptables
+      - iptables-persistent
+      - wpasupplicant
+      - crda
+      - iw
+      - rfkill
+      - firmware-iwlwifi
+    state: present
+
+- name: Check kernel version
+  command: uname -r
+  register: kernel_version
+  changed_when: false
+
+- name: Verify kernel 6.1
+  assert:
+    that:
+      - kernel_version.stdout is search("^6\.1\.")
+    fail_msg: "Kernel version must be 6.1.x for NanoPi Zero2"
+    success_msg: "Kernel version {{ kernel_version.stdout }} is compatible"
+
+- name: Install RTL8189ES/FTV drivers for NanoPi Zero2 onboard WiFi
+  block:
+    - name: Install build dependencies
+      apt:
+        name:
+          - build-essential
+          - dkms
+          - git
+          - bc
+          - linux-headers-{{ kernel_version.stdout }}
+        state: present
+
+    - name: Check if RTL8189ES driver is loaded
+      shell: lsmod | grep 8189es || lsmod | grep 8189fs
+      register: rtl_driver_check
+      changed_when: false
+      failed_when: false
+
+    - name: Clone RTL8189ES driver repository
+      git:
+        repo: 'https://github.com/jwrdegoede/rtl8189ES_linux.git'
+        dest: /usr/src/rtl8189es
+        version: master
+      when: rtl_driver_check.rc != 0
+
+    - name: Build and install RTL8189ES driver
+      shell: |
+        cd /usr/src/rtl8189es
+        make clean
+        make -j$(nproc)
+        make install
+        depmod -a
+        modprobe 8189es
+      args:
+        creates: /lib/modules/{{ kernel_version.stdout }}/kernel/drivers/net/wireless/8189es.ko
+      when: rtl_driver_check.rc != 0
+
+- name: Detect wireless interface
+  shell: |
+    iw dev | awk '$1=="Interface"{print $2}' | head -n1
+  register: wireless_interface_result
+  changed_when: false
+
+- name: Set wireless interface fact
+  set_fact:
+    wireless_interface: "{{ wireless_interface_result.stdout }}"
+
+- name: Verify wireless interface detected
+  assert:
+    that:
+      - wireless_interface != ""
+    fail_msg: "No wireless interface detected"
+    success_msg: "Detected wireless interface: {{ wireless_interface }}"
+
+- name: Detect ethernet interface
+  shell: |
+    ip -o link show | awk -F': ' '$2 !~ /^(lo|wlan|wg)/ {print $2; exit}'
+  register: ethernet_interface_result
+  changed_when: false
+
+- name: Set ethernet interface fact
+  set_fact:
+    ethernet_interface: "{{ ethernet_interface_result.stdout }}"
+
+- name: Verify ethernet interface detected
+  assert:
+    that:
+      - ethernet_interface != ""
+    fail_msg: "No ethernet interface detected"
+    success_msg: "Detected ethernet interface: {{ ethernet_interface }}"
+
+- name: Unblock wireless with rfkill
+  shell: rfkill unblock wifi
+  changed_when: false
+
+- name: Stop conflicting services
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  loop:
+    - wpa_supplicant
+    - NetworkManager
+  failed_when: false
+
+- name: Stop services for configuration
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - hostapd
+    - dnsmasq
+  failed_when: false
+
+- name: Copy WireGuard config file
+  copy:
+    src: "{{ wireguard_config_file }}"
+    dest: /etc/wireguard/wg0.conf.original
+    mode: '0600'
+
+- name: Read original WireGuard config
+  slurp:
+    src: /etc/wireguard/wg0.conf.original
+  register: wg_config_content
+
+- name: Create WireGuard config with service IP routing
+  copy:
+    content: |
+      {{ wg_config_content['content'] | b64decode | regex_replace('PostUp.*', '') | regex_replace('PostDown.*', '') | regex_replace('AllowedIPs.*', 'AllowedIPs = ' + service_ip + '/32') }}
+      PostUp = ip route add {{ service_ip }}/32 dev wg0
+      PostDown = ip route del {{ service_ip }}/32 dev wg0 || true
+    dest: /etc/wireguard/wg0.conf
+    mode: '0600'
+  notify: restart wireguard
+
+- name: Configure hostapd
+  template:
+    src: hostapd.conf.j2
+    dest: /etc/hostapd/hostapd.conf
+    mode: '0644'
+  notify: restart hostapd
+
+- name: Set hostapd config path
+  lineinfile:
+    path: /etc/default/hostapd
+    regexp: '^#?DAEMON_CONF='
+    line: 'DAEMON_CONF="/etc/hostapd/hostapd.conf"'
+  notify: restart hostapd
+
+- name: Backup original dnsmasq config
+  command: mv /etc/dnsmasq.conf /etc/dnsmasq.conf.orig
+  args:
+    creates: /etc/dnsmasq.conf.orig
+
+- name: Configure dnsmasq
+  template:
+    src: dnsmasq.conf.j2
+    dest: /etc/dnsmasq.conf
+    mode: '0644'
+  notify: restart dnsmasq
+
+- name: Configure static IP for wireless interface
+  template:
+    src: wlan0.j2
+    dest: /etc/network/interfaces.d/{{ wireless_interface }}
+    mode: '0644'
+  notify: restart networking
+
+- name: Enable IP forwarding
+  copy:
+    src: 99-vpn-router.conf
+    dest: /etc/sysctl.d/99-vpn-router.conf
+    mode: '0644'
+  notify: apply sysctl
+
+- name: Create firewall script
+  template:
+    src: vpn-router-fw.sh.j2
+    dest: /usr/local/bin/vpn-router-fw.sh
+    mode: '0755'
+
+- name: Create firewall systemd service
+  copy:
+    content: |
+      [Unit]
+      Description=VPN Router Firewall Rules
+      After=network.target wg-quick@wg0.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/vpn-router-fw.sh
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/vpn-router-fw.service
+    mode: '0644'
+  notify: reload systemd
+
+- name: Enable and start WireGuard
+  systemd:
+    name: wg-quick@wg0
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start firewall service
+  systemd:
+    name: vpn-router-fw
+    enabled: yes
+    state: started
+
+- name: Unmask hostapd
+  systemd:
+    name: hostapd
+    masked: no
+
+- name: Enable and start hostapd
+  systemd:
+    name: hostapd
+    enabled: yes
+    state: started
+
+- name: Enable and start dnsmasq
+  systemd:
+    name: dnsmasq
+    enabled: yes
+    state: started
