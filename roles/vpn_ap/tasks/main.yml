@@ -381,7 +381,7 @@
       [Service]
       Type=simple
       WorkingDirectory=/opt/jellyfin-discovery-proxy
-      Environment="JELLYFIN_SERVER_URL=http://{{ service_name })"
+      Environment="JELLYFIN_SERVER_URL=http://{{ service_name }}"
       ExecStart=/opt/jellyfin-discovery-proxy/jellyfin-discovery-proxy
       Restart=always
       RestartSec=10
