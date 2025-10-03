@@ -1,6 +1,6 @@
 ---
 - name: Configure NanoPi Zero2 as Jellyfin VPN Access Point
-  hosts: nanopi
+  hosts: localhost
   become: true
   roles:
     - vpn_ap
