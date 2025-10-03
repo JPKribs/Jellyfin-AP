@@ -218,7 +218,7 @@
 - name: Create WireGuard config with service IP routing
   copy:
     content: |
-      {{ wg_config_content['content'] | b64decode | regex_replace('PostUp.*', '') | regex_replace('PostDown.*', '') | regex_replace('AllowedIPs.*', 'AllowedIPs = ' + service_ip + '/32') }}
+      {{ wg_config_content['content'] | b64decode | regex_replace('PostUp.*\n?', '') | regex_replace('PostDown.*\n?', '') | regex_replace('AllowedIPs.*', 'AllowedIPs = ' + service_ip + '/32') | trim }}
       PostUp = ip route add {{ service_ip }}/32 dev wg0
       PostDown = ip route del {{ service_ip }}/32 dev wg0 || true
     dest: /etc/wireguard/wg0.conf
