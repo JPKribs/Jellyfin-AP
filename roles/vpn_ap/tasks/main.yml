@@ -354,6 +354,13 @@
     enabled: yes
     state: started
 
+- name: Bring up wireless interface with static IP
+  shell: |
+    ip addr flush dev {{ wireless_interface }}
+    ip addr add {{ ap_ip }}/24 dev {{ wireless_interface }}
+    ip link set {{ wireless_interface }} up
+  changed_when: false
+
 - name: Enable and start dnsmasq
   systemd:
     name: dnsmasq
