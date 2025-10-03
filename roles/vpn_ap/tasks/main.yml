@@ -147,43 +147,6 @@
     fail_msg: "Kernel version must be 6.1.x for NanoPi Zero2"
     success_msg: "Kernel version {{ kernel_version.stdout }} is compatible"
 
-- name: Install RTL8189ES/FTV drivers for NanoPi Zero2 onboard WiFi
-  block:
-    - name: Install build dependencies
-      apt:
-        name:
-          - build-essential
-          - dkms
-          - git
-          - bc
-          - linux-headers-{{ kernel_version.stdout }}
-        state: present
-
-    - name: Check if RTL8189ES driver is loaded
-      shell: lsmod | grep 8189es || lsmod | grep 8189fs
-      register: rtl_driver_check
-      changed_when: false
-      failed_when: false
-
-    - name: Clone RTL8189ES driver repository
-      git:
-        repo: 'https://github.com/jwrdegoede/rtl8189ES_linux.git'
-        dest: /usr/src/rtl8189es
-        version: master
-      when: rtl_driver_check.rc != 0
-
-    - name: Build and install RTL8189ES driver
-      shell: |
-        cd /usr/src/rtl8189es
-        make clean
-        make -j$(nproc)
-        make install
-        depmod -a
-        modprobe 8189es
-      args:
-        creates: /lib/modules/{{ kernel_version.stdout }}/kernel/drivers/net/wireless/8189es.ko
-      when: rtl_driver_check.rc != 0
-
 - name: Detect wireless interface
   shell: |
     iw dev | awk '$1=="Interface"{print $2}' | head -n1
