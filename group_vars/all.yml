@@ -17,4 +17,4 @@ ap_dhcp_end: "10.192.254.200"
 service_ip: "10.192.1.254"
 service_name: "jellyfin.example.com"
 
-wireguard_config_file: "/Jellyfin-AP/wireguard.conf"
+wireguard_config_file: "/home/pi/Jellyfin-AP/wireguard.conf"
