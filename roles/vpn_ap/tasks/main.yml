@@ -283,6 +283,19 @@
     mode: '0644'
   notify: restart networking
 
+- name: Configure DHCP for ethernet interface
+  template:
+    src: eth0.j2
+    dest: /etc/network/interfaces.d/{{ ethernet_interface }}
+    mode: '0644'
+
+- name: Bring up ethernet interface
+  shell: |
+    ip link set {{ ethernet_interface }} up
+    dhclient -v {{ ethernet_interface }}
+  changed_when: false
+  ignore_errors: true
+
 - name: Enable IP forwarding
   copy:
     src: 99-vpn-router.conf
@@ -338,6 +351,22 @@
     name: hostname-persist
     enabled: yes
     daemon_reload: yes
+
+- name: Create WireGuard service override directory
+  file:
+    path: /etc/systemd/system/wg-quick@wg0.service.d
+    state: directory
+    mode: '0755'
+
+- name: Override WireGuard service to wait for network
+  copy:
+    content: |
+      [Unit]
+      After=network-online.target
+      Wants=network-online.target
+    dest: /etc/systemd/system/wg-quick@wg0.service.d/wait-for-network.conf
+    mode: '0644'
+  notify: reload systemd
 
 - name: Enable and start WireGuard
   systemd:

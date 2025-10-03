@@ -1,0 +1,4 @@
+auto {{ ethernet_interface }}
+allow-hotplug {{ ethernet_interface }}
+iface {{ ethernet_interface }} inet dhcp
+    post-up /bin/sleep 2
