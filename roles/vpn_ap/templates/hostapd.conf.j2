@@ -2,14 +2,39 @@ interface={{ wireless_interface }}
 driver=nl80211
 ssid={{ ap_ssid }}
 
+###################################################################################
+
+# Compatible: 2.4GHz Configuration (Active)
+
 hw_mode=g
 channel={{ ap_channel }}
 country_code=US
 
 ieee80211n=1
+ieee80211d=1
 wmm_enabled=1
 
 ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40][MAX-AMSDU-7935]
+
+###################################################################################
+
+# High Quality: 5GHz Configuration (Inactive)
+
+#hw_mode=a
+#channel=36
+#country_code=US
+#
+#ieee80211n=1
+#ieee80211ac=1
+#ieee80211d=1
+#wmm_enabled=1
+#
+#ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40][MAX-AMSDU-7935]
+#vht_capab=[MAX-AMSDU-7935][SHORT-GI-80][SU-BEAMFORMEE]
+#vht_oper_chwidth=1
+#vht_oper_centr_freq_seg0_idx=42
+
+###################################################################################
 
 macaddr_acl=0
 auth_algs=1
@@ -19,4 +44,3 @@ wpa=2
 wpa_passphrase={{ ap_password }}
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
-ieee80211d=1
