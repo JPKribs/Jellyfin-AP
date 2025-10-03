@@ -134,6 +134,8 @@
       - rfkill
       - firmware-iwlwifi
       - procps
+      - golang-go
+      - git
     state: present
 
 - name: Check kernel version
@@ -349,6 +351,53 @@
     name: vpn-router-fw
     enabled: yes
     state: started
+
+- name: Install Go for jellyfin-discovery-proxy
+  apt:
+    name: golang-go
+    state: present
+
+- name: Clone jellyfin-discovery-proxy repository
+  git:
+    repo: 'https://github.com/JPKribs/jellyfin-discovery-proxy.git'
+    dest: /opt/jellyfin-discovery-proxy
+    version: main
+    force: yes
+
+- name: Build jellyfin-discovery-proxy
+  shell: |
+    cd /opt/jellyfin-discovery-proxy
+    go build -o jellyfin-discovery-proxy
+  args:
+    creates: /opt/jellyfin-discovery-proxy/jellyfin-discovery-proxy
+
+- name: Create jellyfin-discovery-proxy systemd service
+  copy:
+    content: |
+      [Unit]
+      Description=Jellyfin Discovery Proxy
+      After=network.target wg-quick@wg0.service
+
+      [Service]
+      Type=simple
+      WorkingDirectory=/opt/jellyfin-discovery-proxy
+      Environment="JELLYFIN_SERVER_URL=http://{{ service_name })"
+      ExecStart=/opt/jellyfin-discovery-proxy/jellyfin-discovery-proxy
+      Restart=always
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/jellyfin-discovery-proxy.service
+    mode: '0644'
+  notify: reload systemd
+
+- name: Enable and start jellyfin-discovery-proxy
+  systemd:
+    name: jellyfin-discovery-proxy
+    enabled: yes
+    state: started
+    daemon_reload: yes
 
 - name: Unmask hostapd
   systemd:
