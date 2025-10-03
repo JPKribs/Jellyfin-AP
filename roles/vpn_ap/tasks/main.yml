@@ -130,7 +130,6 @@
       - iptables
       - iptables-persistent
       - wpasupplicant
-      - crda
       - iw
       - rfkill
       - firmware-iwlwifi
