@@ -133,6 +133,7 @@
       - iw
       - rfkill
       - firmware-iwlwifi
+      - procps
     state: present
 
 - name: Check kernel version
@@ -281,7 +282,9 @@
     src: 99-vpn-router.conf
     dest: /etc/sysctl.d/99-vpn-router.conf
     mode: '0644'
-  notify: apply sysctl
+
+- name: Apply IP forwarding immediately
+  command: sysctl -p /etc/sysctl.d/99-vpn-router.conf
 
 - name: Create firewall script
   template:
