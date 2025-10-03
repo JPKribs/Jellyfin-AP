@@ -18,7 +18,7 @@ cd Jellyfin-AP
 
 ### 3. Run the setup script
 ```bash
-sudo bash setup.sh
+sudo bash nanopi-setup.sh
 ```
 
 This will:
