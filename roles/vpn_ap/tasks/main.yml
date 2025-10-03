@@ -186,6 +186,10 @@
   shell: rfkill unblock wifi
   changed_when: false
 
+- name: Set wireless regulatory domain to US
+  command: iw reg set US
+  changed_when: false
+
 - name: Stop conflicting services
   systemd:
     name: "{{ item }}"
