@@ -219,24 +219,24 @@
   shell: |
     # Read original config and remove any existing PostUp/PostDown
     grep -v '^PostUp' /etc/wireguard/wg0.conf.original | grep -v '^PostDown' > /tmp/wg0.tmp
-    
+
     # Find the [Interface] section and insert PostUp/PostDown after PrivateKey
     awk '
     /^\[Interface\]/ { print; interface=1; next }
-    /^PrivateKey/ && interface { 
+    /^PrivateKey/ && interface {
       print
       print "PostUp = ip route add {{ service_ip }}/32 dev wg0"
       print "PostDown = ip route del {{ service_ip }}/32 dev wg0 || true"
       interface=0
       next
     }
-    /^AllowedIPs/ { 
+    /^AllowedIPs/ {
       print "AllowedIPs = {{ service_ip }}/32"
       next
     }
     { print }
     ' /tmp/wg0.tmp > /etc/wireguard/wg0.conf
-    
+
     chmod 0600 /etc/wireguard/wg0.conf
     rm /tmp/wg0.tmp
   args:
